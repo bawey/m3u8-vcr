@@ -3,23 +3,31 @@
 # A crude proof of concept
 
 HOST='ddh1.cdndac.lol'
-CHANNEL="${1:-75}"
-ROOT="https://$HOST/ddh1/premium$CHANNEL/tracks-v1a1"
 LIST='mono.m3u8'
 ORIGIN='https://superwebplay.xyz/'
+ROOT_PATTERN="https://$HOST/ddh1/premium___/tracks-v1a1"
+
+# if no channel is provided, scan the range and ask
+if [ -z "$1" ]
+then
+  echo "No channel specified, scanning the range of 00-99"
+  for i in {01..99}
+  do
+    URL="${ROOT_PATTERN/___/$i}/$LIST";
+    PLAYLIST=$(curl $URL -s --output -);
+    if [[ $PLAYLIST =~ ".ts" ]]
+    then
+       echo "Found channel: $i";
+    fi
+  done
+  read -p "Please type a channel number: " CHANNEL -r
+  else
+    CHANNEL=$1
+    echo "Picking channel $CHANNEL"
+fi
+
+ROOT="${ROOT_PATTERN/___/$CHANNEL}"
 OUTPUT_FILE="/tmp/dumped-stream-$CHANNEL.ts"
-
-# For a brute-force channels scan, do:
-#for i in {01..99}
-#do
-#  URL="${ROOT/75/$i}/$LIST";
-#  PLAYLIST=$(curl $URL -s --output -);
-#  if [[ $PLAYLIST =~ ".ts" ]]
-#  then
-#     echo $URL;
-#  fi
-#done
-
 
 ALL_SEGMENTS=()
 while :
@@ -33,8 +41,10 @@ do
       ((REPEATED_COUNT+=1))
     else
       CHUNK=$(curl -L -m 5 --retry 3 --retry-all-errors "$ROOT/$SEG" -H "Origin: $ORIGIN" -H "Referer: $ORIGIN" -H "Host: $HOST" --output - | base64)
+      ((CHUNK_SIZE=${#CHUNK}/1024))
+      echo "Fetched ${CHUNK_SIZE}k of segment data (base64-encoded) from $SEG"
       ALL_SEGMENTS+=("$SEG")
-      CHUNKS="$CHUNKS$CHUNK"
+      CHUNKS+="$CHUNK"
     fi
   done
   #To watch each fetched piece as soon as it lands:
